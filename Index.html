@@ -1,372 +1,95 @@
-
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="utf-8">
-  <title>HLS Player Embed</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" media="all" href="https://cdn.plyr.io/3.7.8/plyr.css">
-  <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <title>PLYR PLAYER</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+  <meta name="referrer" content="no-referrer"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/plyr@3.6.12/dist/plyr.css"/>
   <style>
-    /* Basic styling to make the player fill the iframe */
-    body,
-    html {
+    body {
+      background-color: #000000;
       margin: 0;
       padding: 0;
-      height: 100%;
       overflow: hidden;
-      /* Prevent scrollbars on the iframe */
     }
-
+    html, body {
+      height: 100%;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      max-width: 100%;
+    }
     .plyr {
       height: 100%;
-      width: 100%;
-      border-radius: 0;
-      /* Optional: remove border-radius for seamless embed */
     }
   </style>
 </head>
-
 <body>
-  <!-- Video element with conditional attributes -->
-  <video id="player" playsinline>
-    <source src="" type="application/vnd.apple.mpegurl" />
-    <a href="" download>Download</a>
-  </video>
+  <video autoplay="yes" oncanplay="this.muted=true"  id="player" controls preload="metadata" controls></video>
 
-  <!-- Hidden config elements to pass data from server to client -->
-  <script type="application/json" id="embed-config">
-    {
-      "autoplay": false,
-      "muted": false,
-      "hidecontrols": false
-    }
-  </script>
-
-  <!-- Generate custom color styles if needed -->
-
-
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.1.4/dist/hls.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/plyr@3.6.12/dist/plyr.min.js"></script>
   <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      const video = document.getElementById('player');
-      let hasUserInteracted = false;
-      let isAutoplayMuted = false;
-      let autoplayAttempted = false;
+  document.addEventListener('DOMContentLoaded', async () => {
+    const video = document.getElementById('player');
 
-      // Get configuration from hidden JSON element
-      const configElement = document.getElementById('embed-config');
-      const config = JSON.parse(configElement.textContent);
+    // ====== Get URL from query param
+    const urlParams = new URLSearchParams(window.location.search);
+    const source = urlParams.get("url");
+    if (!source) {
+      document.body.innerHTML = "";
+      return;
+    }
 
-      // Configure Plyr options
-      const plyrOptions = {
-        captions: {
-          active: true,
-          update: true,
-          language: 'en'
-        }
-      };
+    if (Hls.isSupported()) {
+      const hls = new Hls({ maxMaxBufferLength: 100 });
+      hls.loadSource(source);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        const availableQualities = hls.levels.map(level => level.height).filter(Boolean).sort((a, b) => b - a);
+        const defaultQuality = availableQualities.includes(1080) ? 1080 : (availableQualities[0] || 360);
 
-      // Handle controls visibility
-      if (config.hidecontrols) {
-        plyrOptions.controls = [];
-      } else {
-        plyrOptions.controls = ['play-large', 'play', 'progress',
-          'current-time', 'mute', 'volume', 'fullscreen'
-        ];
-      }
-
-      // Handle muted state - respect user's choice
-      if (config.muted) {
-        plyrOptions.muted = true;
-      }
-
-      // Initialize Plyr
-      const player = new Plyr(video, plyrOptions);
-
-      // Initialize HLS if supported
-      const videoUrl = '';
-      let hls = null;
-
-      if (Hls.isSupported()) {
-        hls = new Hls();
-        hls.loadSource(videoUrl);
-        hls.attachMedia(video);
-
-        hls.on(Hls.Events.MANIFEST_PARSED, function() {
-          // HLS stream is ready
-          if (config.autoplay) {
-            setTimeout(() => {
-              attemptSmartAutoplay();
-            }, 100);
-          } else if (config.muted) {
-            player.muted = true;
-            video.muted = true;
-          }
-        });
-      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        // Native HLS support (Safari)
-        video.src = videoUrl;
-
-        video.addEventListener('loadedmetadata', function() {
-          if (config.autoplay) {
-            setTimeout(() => {
-              attemptSmartAutoplay();
-            }, 100);
-          } else if (config.muted) {
-            player.muted = true;
-            video.muted = true;
-          }
-        });
-      }
-
-      async function attemptSmartAutoplay() {
-        if (autoplayAttempted) return;
-        autoplayAttempted = true;
-
-        try {
-          // First, try to play with sound (unmuted)
-          player.muted = false;
-          const playPromise = player.play();
-
-          if (playPromise && typeof playPromise.then === 'function') {
-            await playPromise;
-            return;
-          }
-        } catch (error) {
-          // Try muted autoplay if unmuted fails
-        }
-
-        try {
-          // If that fails, try muted autoplay
-          player.muted = true;
-          isAutoplayMuted = true;
-
-          const mutedPlayPromise = player.play();
-
-          if (mutedPlayPromise && typeof mutedPlayPromise.then ===
-            'function') {
-            await mutedPlayPromise;
-            showUnmuteHint();
-            return;
-          }
-        } catch (mutedError) {
-          // Last resort: try direct video element autoplay
-          try {
-            video.muted = true;
-            const directPlay = video.play();
-            if (directPlay && typeof directPlay.then === 'function') {
-              await directPlay;
-              isAutoplayMuted = true;
-              showUnmuteHint();
+        const player = new Plyr(video, {
+          controls: ['play-large', 'play', 'mute', 'volume', 'settings', 'fullscreen'],
+          quality: {
+            default: defaultQuality,
+            options: availableQualities,
+            forced: true,
+            onChange: (quality) => {
+              hls.levels.forEach((level, levelIndex) => {
+                if (level.height === quality) {
+                  hls.currentLevel = levelIndex;
+                }
+              });
             }
-          } catch (directError) {
-            showAutoplayBlockedMessage();
           }
-        }
-      }
-
-      function showUnmuteHint() {
-        // Create simple unmute button
-        const unmuteBtn = document.createElement('div');
-        unmuteBtn.id = 'unmute-overlay';
-        unmuteBtn.style.cssText = `
-                    position: absolute;
-                    top: 16px;
-                    right: 16px;
-                    width: 40px;
-                    height: 40px;
-                    background: rgba(0, 0, 0, 0.8);
-                    border-radius: 8px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    cursor: pointer;
-                    z-index: 1000;
-                    transition: opacity 0.2s ease;
-                `;
-
-        // Simple speaker icon
-        unmuteBtn.innerHTML = `
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
-                        <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
-                    </svg>
-                `;
-
-        // Simple tooltip
-        const tooltip = document.createElement('div');
-        tooltip.className = 'unmute-tooltip';
-        tooltip.style.cssText = `
-                    position: fixed;
-                    background: rgba(0, 0, 0, 0.9);
-                    color: white;
-                    padding: 8px 12px;
-                    border-radius: 4px;
-                    font-size: 13px;
-                    font-weight: 500;
-                    white-space: nowrap;
-                    opacity: 0;
-                    pointer-events: none;
-                    transition: opacity 0.2s ease;
-                    z-index: 10000;
-                    visibility: hidden;
-                `;
-        tooltip.textContent = 'Unmute';
-        document.body.appendChild(tooltip);
-
-        // Position tooltip relative to button
-        function positionTooltip() {
-          const btnRect = unmuteBtn.getBoundingClientRect();
-          tooltip.style.left = (btnRect.left - 60) + 'px';
-          tooltip.style.top = (btnRect.top + 5) + 'px';
-        }
-
-        // Simple hover effects
-        unmuteBtn.addEventListener('mouseenter', () => {
-          unmuteBtn.style.background = 'rgba(0, 0, 0, 0.9)';
-          positionTooltip();
-          tooltip.style.visibility = 'visible';
-          tooltip.style.opacity = '1';
         });
 
-        unmuteBtn.addEventListener('mouseleave', () => {
-          unmuteBtn.style.background = 'rgba(0, 0, 0, 0.8)';
-          tooltip.style.opacity = '0';
-          tooltip.style.visibility = 'hidden';
-        });
+        // Force autoplay unmute
+        video.muted = true; // required for autoplay to start
+        video.play().then(() => {
+          video.muted = false; // unmute after autoplay starts
+        }).catch(err => console.log("Autoplay blocked:", err));
 
-        // Position relative to video container
-        const container = player.elements.container;
-        container.style.position = 'relative';
-        container.appendChild(unmuteBtn);
-
-        // Make the button clickable to unmute
-        unmuteBtn.addEventListener('click', function(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          forceUnmute();
-        });
-      }
-
-      function showAutoplayBlockedMessage() {
-        // Show a message that autoplay was blocked
-        const messageElement = document.createElement('div');
-        messageElement.style.cssText = `
-                    position: absolute;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                    background: rgba(0, 0, 0, 0.8);
-                    color: white;
-                    padding: 12px 16px;
-                    border-radius: 6px;
-                    font-size: 14px;
-                    z-index: 1000;
-                    text-align: center;
-                    pointer-events: none;
-                `;
-        messageElement.innerHTML =
-          '▶️ Click to play<br><small>Autoplay blocked by browser</small>';
-
-        const container = player.elements.container;
-        container.style.position = 'relative';
-        container.appendChild(messageElement);
-
-        // Remove message after 3 seconds
-        setTimeout(() => {
-          if (messageElement.parentNode) {
-            messageElement.remove();
+        document.addEventListener('fullscreenchange', () => {
+          if (document.fullscreenElement) {
+            if (screen.orientation && screen.orientation.lock) {
+              screen.orientation.lock('landscape').catch(err => console.error('Error locking orientation:', err));
+            }
           }
-        }, 3000);
-      }
-
-      // Force unmute function
-      function forceUnmute() {
-        try {
-          // Set both player and video element to unmuted
-          player.muted = false;
-          video.muted = false;
-
-          // Force volume to be audible
-          player.volume = 1;
-          video.volume = 1;
-
-          // Remove the overlay and tooltip
-          const overlay = document.getElementById('unmute-overlay');
-          if (overlay) {
-            overlay.style.opacity = '0';
-            setTimeout(() => overlay.remove(), 300);
-          }
-
-          // Clean up tooltip
-          const tooltip = document.querySelector('.unmute-tooltip');
-          if (tooltip) {
-            tooltip.style.opacity = '0';
-            tooltip.style.visibility = 'hidden';
-            setTimeout(() => {
-              if (tooltip.parentNode) {
-                tooltip.remove();
-              }
-            }, 300);
-          }
-
-          // Mark as interacted
-          hasUserInteracted = true;
-          isAutoplayMuted = false;
-
-        } catch (error) {
-          // Silent fail for unmute errors
-        }
-      }
-
-      // Handle user interaction for unmuting
-      function handleUserInteraction(e) {
-        if (!hasUserInteracted) {
-          // If video was muted due to autoplay, try to unmute it
-          if (isAutoplayMuted && (player.playing || video.currentTime >
-            0)) {
-            forceUnmute();
-          } else {
-            hasUserInteracted = true;
-          }
-        }
-      }
-
-      // Listen for various user interaction events on the document
-      ['click', 'touchstart', 'keydown', 'mousedown'].forEach(eventType => {
-        document.addEventListener(eventType, handleUserInteraction, {
-          capture: true,
-          passive: true
         });
       });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = source;
+      new Plyr(video);
+      video.muted = true;
+      video.play().then(() => { video.muted = false; }).catch(err => console.log("Autoplay blocked:", err));
+    } else {
+      document.body.innerHTML = '<p>Your browser does not support HLS playback.</p>';
+    }
+  });
+</script>
 
-      // Also listen on the video container specifically
-      const container = player.elements.container;
-      ['click', 'touchstart'].forEach(eventType => {
-        container.addEventListener(eventType, function(e) {
-          if (isAutoplayMuted) {
-            e.preventDefault();
-            forceUnmute();
-          }
-        }, {
-          capture: true
-        });
-      });
-
-      // Listen for play button clicks specifically
-      player.on('play', () => {
-        if (!hasUserInteracted && isAutoplayMuted) {
-          forceUnmute();
-        }
-      });
-
-      // Expose player for debugging
-      window.player = player;
-      window.config = config;
-      if (hls) window.hls = hls;
-    });
-  </script>
 </body>
-
 </html>
